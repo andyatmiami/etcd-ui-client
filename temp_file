@@ -1,0 +1,105 @@
+var grpc =  require('grpc');
+var async = require('async');
+
+var PROTO_PATH = __dirname + '/proto/rpc.proto';
+
+var etcdService = grpc.load(PROTO_PATH).etcdserverpb;
+
+var KVClient = new etcdService.KV('localhost:2379', grpc.credentials.createInsecure());
+
+function createKey (requestKey, requestValue, callback) {
+  var putRequest = {
+    key : new Buffer(requestKey),
+    value : new Buffer(requestValue),
+    lease : 0,
+    prev_kv : false,
+    ignore_value : false,
+    ignore_lease : false
+  };
+
+  KVClient['put'](putRequest, callback);
+}
+
+function getKey (requestKey, callback) {
+  var getRequest = {
+    key : new Buffer(requestKey)
+  };
+
+  KVClient['range'](getRequest, callback);
+}
+
+function deleteKey (requestKey, callback) {
+  var deleteRequest = {
+    key : new Buffer(requestKey),
+    range_end : new Buffer(requestKey + 1)
+  };
+
+  KVClient['deleteRange'](deleteRequest, callback);
+}
+
+function getChildren (parentKey, callback) {
+  var getRequest = {
+    key : new Buffer(parentKey),
+    range_end : new Buffer(parentKey + 1)
+  };
+
+  KVClient['range'](getRequest, callback);
+}
+
+function printGetKeyResponse (response) {
+  console.log('Total Count: '+ response.count);
+  var i = 0;
+
+  while (i < response.count) {
+    console.log(response.kvs[i].key.toString() + ' -- ' + response.kvs[i].value.toString());
+    i++;
+  }
+}
+
+async.series([
+  function testCreateKey (next) {
+    createKey('/premium/leader', 'node-1', function (err, response) {
+      console.log('CREATE KEY RESPONSE');
+      delete response.header;
+      console.log(response);
+      next(err);
+    });
+  },
+  function testCreateKey (next) {
+    createKey('/premium/leader/child-1', 'node-1', function (err, response) {
+      console.log('CREATE KEY RESPONSE');
+      delete response.header;
+      console.log(response);
+      next(err);
+    });
+  },
+  function testGetKey (next) {
+    getKey('/premium/leader', function (err, response) {
+      console.log('GET KEY RESPONSE');
+      delete response.header;
+      printGetKeyResponse(response);
+      next(err);
+    });
+  },
+  function testGetChildren (next) {
+    getChildren('/premium/leader', function (err, response) {
+      console.log('GET CHILDREN RESPONSE');
+      delete response.header;
+      printGetKeyResponse(response);
+      next(err);
+    });
+  },
+  function testDeleteKey (next) {
+    deleteKey('/premium/leader', function (err, response) {
+      console.log('DELETE KEY RESPONSE');
+      console.log(response.header);
+      delete response.header;
+      console.log(response);
+      next(err);
+    });
+  }
+], function (err) {
+  console.log(err);
+  console.log('finished the test');
+});
+
